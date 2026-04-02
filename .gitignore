@@ -9,3 +9,9 @@ test/sim_build
 test/__pycache__/
 test/results.xml
 test/gate_level_netlist.v
+DESIGN_NOTES.md
+tt
+.venv
+.designinit
+setup_log.txt
+working_instructions.txt

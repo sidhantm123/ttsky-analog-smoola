@@ -1,0 +1,16 @@
+{
+  "name": "IIC-OSIC-TOOLS",
+  "image": "hpretl/iic-osic-tools:latest",
+  "runArgs": [
+    "--platform=linux/arm64"
+  ],
+  "remoteEnv": {
+    "PDK": "sky130A",
+    "PDK_ROOT": "/foss/pdks",
+    "PATH": "/foss/tools/magic/bin:/foss/tools/xschem/bin:/foss/tools/ngspice/bin:/foss/tools/netgen/bin:/foss/tools/klayout/bin:/foss/tools/iverilog/bin:/foss/tools/gtkwave/bin:/foss/tools/yosys/bin:/foss/tools/verilator/bin:/foss/tools/sak/bin:${containerEnv:PATH}"
+  },
+  "mounts": [
+    "source=${localWorkspaceFolder},target=/foss/designs,type=bind"
+  ],
+  "workspaceFolder": "/foss/designs"
+}
