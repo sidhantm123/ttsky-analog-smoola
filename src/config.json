@@ -1,0 +1,6 @@
+{
+  "CLOCK_PERIOD": 1000,
+  "CLOCK_PORT": "clk",
+  "DESIGN_IS_CORE": false,
+  "RUN_KLAYOUT_XOR": false
+}
