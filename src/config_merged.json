@@ -5,10 +5,17 @@
   "RUN_KLAYOUT_XOR": false,
   "DESIGN_NAME": "tt_um_sidhantm123_neural_adc",
   "VERILOG_FILES": [
-    "dir::project.v"
+    "dir::project.v",
+    "dir::digital_top.v",
+    "dir::sar_fsm.v",
+    "dir::threshold_det.v",
+    "dir::refractory_ctr.v",
+    "dir::spike_counter.v",
+    "dir::output_mux.v"
   ],
+  "FP_SIZING": "absolute",
   "DIE_AREA": "0 0 161.00 225.76",
-  "FP_DEF_TEMPLATE": "dir::../tt/tech/sky130A/def/tt_block_1x2_pg.def",
+  "FP_DEF_TEMPLATE": "dir::../tt/tech/sky130A/def/analog/tt_analog_1x2.def",
   "VDD_PIN": "VPWR",
   "GND_PIN": "VGND",
   "RT_MAX_LAYER": "met4"

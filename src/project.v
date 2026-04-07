@@ -31,6 +31,7 @@ module tt_um_sidhantm123_neural_adc (
     // For Verilog/hardening purposes they are left unconnected here —
     // the actual wires are made in Magic at tape-out time.
     wire       comparator_in;   // from analog comparator (unconnected in RTL)
+    assign comparator_in = 1'b0;  // RTL stub for hardening; overridden by analog routing in Magic layout
     wire [5:0] dac_bits;        // to cap DAC switches (unconnected in RTL)
 
     digital_top u_digital_top (
