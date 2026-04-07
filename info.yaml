@@ -18,8 +18,14 @@ project:
   top_module:  "tt_um_sidhantm123_neural_adc"
 
   # List your project's source files here. Source files must be in ./src and you must list each source file separately, one per line:
-  source_files:        
+  source_files:
     - "project.v"
+    - "digital_top.v"
+    - "sar_fsm.v"
+    - "threshold_det.v"
+    - "refractory_ctr.v"
+    - "spike_counter.v"
+    - "output_mux.v"
 
 # The pinout of your project. Leave unused pins blank. DO NOT delete or add any pins.
 # This section is for the datasheet/website. Use descriptive names (e.g., RX, TX, MOSI, SCL, SEG_A, etc.).
