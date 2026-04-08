@@ -1,0 +1,846 @@
+================================================================================
+NEURAL ADC - TINY TAPEOUT SKY130A
+WORKING INSTRUCTIONS
+================================================================================
+Project: tt_um_sidhantm123_neural_adc
+Repo: https://github.com/sidhantm123/ttsky-analog-smoola
+================================================================================
+
+This document explains how to get everything running each day and how to use
+each tool in the project workflow. Read DESIGN_NOTES.md for the actual design
+architecture and pin assignments.
+
+================================================================================
+PART 1 — STARTING UP EACH DAY
+================================================================================
+
+You have two separate environments. You will use both in parallel.
+
+--------------------------------------------------------------------------------
+1.1 Starting the Analog Environment (Docker Container in VS Code)
+--------------------------------------------------------------------------------
+
+USE FOR: Xschem, Magic, ngspice, netgen — all analog work.
+
+STEPS:
+1. Open Docker Desktop from Applications. Wait for the whale icon in the
+   Mac menu bar to stop animating. Docker must be running before VS Code
+   can start the container.
+
+2. Open XQuartz from Spotlight:
+   Cmd+Space → type "XQuartz" → Enter
+   Wait for it to fully load. You need this for GUI windows (Xschem, Magic)
+   to appear on your screen.
+
+3. Open VS Code and open your project folder:
+   File → Open Folder → Desktop/TinyTapeout/ttsky-analog-smoola
+
+4. VS Code will show a popup in the bottom right:
+   "Folder contains a Dev Container configuration file. Reopen in Container?"
+   Click "Reopen in Container".
+
+   If the popup does not appear:
+   Click the green >< icon in the bottom left corner →
+   Select "Reopen in Container"
+
+   Or use the Command Palette:
+   Cmd+Shift+P → type "Reopen in Container" → Enter
+
+5. Wait for the container to start (5-10 seconds after first setup).
+   The bottom left icon will change from >< to "Dev Container: IIC-OSIC-TOOLS"
+   when it is ready.
+
+6. Open the integrated terminal:
+   Ctrl+` (backtick key, top left under Escape)
+   OR: Terminal → New Terminal
+
+7. Verify you are inside the container:
+   $ uname -a
+   Should print: Linux ... aarch64 GNU/Linux
+   If it prints Darwin you are on your Mac, not in the container.
+
+8. Verify tools are available:
+   $ which xschem
+   $ which magic
+   $ which ngspice
+   $ which netgen
+   All should print paths. If any return empty, see Troubleshooting section.
+
+9. Verify PDK:
+   $ echo $PDK
+   Should print: sky130A
+
+Your analog environment is ready.
+
+--------------------------------------------------------------------------------
+1.2 Starting the Digital Environment (Mac natively)
+--------------------------------------------------------------------------------
+
+USE FOR: Writing Verilog, running cocotb tests, running LibreLane hardening.
+
+STEPS:
+1. Open a Mac terminal (not the VS Code container terminal).
+   You can open a new terminal window from the Mac menu bar or use
+   VS Code's terminal while in local mode (not container mode).
+
+2. Navigate to your project:
+   $ cd ~/Desktop/TinyTapeout/ttsky-analog-smoola
+
+3. Activate the virtual environment:
+   $ source .venv/bin/activate
+   Your prompt should show (.venv) at the start.
+
+4. Verify:
+   $ python3 --version    → should say Python 3.12.x
+   $ which iverilog       → should say /usr/local/bin/iverilog
+
+Your digital environment is ready.
+
+--------------------------------------------------------------------------------
+1.3 Switching Between Environments
+--------------------------------------------------------------------------------
+
+You can have both running simultaneously in different terminals:
+- VS Code integrated terminal (Ctrl+`) = inside container = analog tools
+- Separate Mac terminal with .venv active = digital tools
+
+To open multiple terminals in VS Code:
+Click the + icon in the terminal panel to add a new tab.
+Note: all VS Code terminals while in container mode are inside the container.
+For Mac-native digital work, use a separate Mac terminal window.
+
+To exit the container and go back to local mode:
+Click the green "Dev Container: IIC-OSIC-TOOLS" icon bottom left →
+Select "Reopen Folder Locally"
+
+
+================================================================================
+PART 2 — ANALOG WORKFLOW (Inside Docker Container)
+================================================================================
+
+The analog workflow follows this sequence for every block:
+Schematic (Xschem) → Simulation (ngspice) → Layout (Magic) → LVS (netgen)
+→ Post-layout simulation (ngspice) → repeat until clean
+
+--------------------------------------------------------------------------------
+2.1 Xschem — Schematic Editor
+--------------------------------------------------------------------------------
+
+PURPOSE: Draw transistor-level schematics for your analog blocks
+         (comparator, filters, cap DAC switches).
+
+LAUNCHING:
+$ xschem &
+The & runs it in the background so your terminal stays usable.
+
+BASIC NAVIGATION:
+- Zoom in/out:       Scroll wheel or Ctrl+scroll
+- Pan:               Middle mouse button drag, or F to fit view
+- Select component:  Left click
+- Move component:    Press m after selecting
+- Delete:            Press Delete after selecting
+- Add wire:          Press w, click start point, click end point, press Esc
+- Add component:     Press Insert, browse to component, place it
+
+KEY KEYBOARD SHORTCUTS:
+- q         Edit properties of selected component
+- e         Descend into a symbol (open subcircuit)
+- Ctrl+e    Go back up to parent schematic
+- n         Generate SPICE netlist
+- s         Save schematic
+- Ctrl+z    Undo
+- F         Fit entire schematic to window
+
+SETTING UP A NEW SCHEMATIC:
+1. File → New Schematic
+2. Press Insert to open component browser
+3. Navigate to: /foss/pdks/sky130A/libs.tech/xschem/
+4. This contains all SKY130A primitive devices (transistors, etc.)
+
+ESSENTIAL COMPONENTS TO PLACE IN EVERY SCHEMATIC:
+- TT_MODELS: Loads SKY130A SPICE models. Every schematic needs this.
+  Found in: sky130_tests/ directory in the Xschem library
+  This generates the .lib line pointing to SKY130A model files.
+
+- code_shown.sym (or code.sym): Where you write your simulation commands.
+  Press Insert → browse to devices/ → place code_shown.sym
+  Press q to edit → set "value" attribute to your ngspice commands.
+  Example for transient simulation:
+    .tran 1n 100u
+    .save all
+
+SKY130A TRANSISTOR SYMBOLS:
+- NMOS: sky130_fd_pr/nfet_01v8.sym  (standard 1.8V NMOS)
+- PMOS: sky130_fd_pr/pfet_01v8.sym  (standard 1.8V PMOS)
+- MIM cap: sky130_fd_pr/cap_mim_m3_1.sym (metal capacitor)
+- Poly resistor: sky130_fd_pr/res_generic_po.sym
+
+PROCESS CORNERS:
+The TT_MODELS component defaults to "tt" (typical-typical).
+For your comparator and filters, also simulate:
+- ss (slow-slow) — worst case slow
+- ff (fast-fast) — worst case fast
+- sf, fs — mismatched corners
+Change the corner in TT_MODELS properties to test each one.
+
+GENERATING A NETLIST:
+Press n or click the Netlist button.
+Netlist is saved to: ~/.xschem/simulations/your_schematic_name.spice
+
+RUNNING SIMULATION FROM XSCHEM:
+Simulation → Configure simulators and tools → select ngspice
+Then click the Simulation button.
+ngspice runs in a terminal window and output is shown there.
+
+VIEWING WAVEFORMS:
+After simulation: Simulation → Add waveform graph
+Then: Simulation → Add waveform reload launcher
+Click the launcher to load results and display waveforms.
+
+SAVING YOUR WORK:
+Press s or File → Save
+Save schematics to: /foss/designs/xschem/
+(create this directory first: mkdir -p /foss/designs/xschem)
+
+--------------------------------------------------------------------------------
+2.2 ngspice — Circuit Simulator
+--------------------------------------------------------------------------------
+
+PURPOSE: Simulate your analog circuits using SKY130A transistor models.
+         Verifies your design works before committing to layout.
+
+LAUNCHING DIRECTLY (for manual runs):
+$ ngspice your_circuit.spice
+
+OR run from inside Xschem using the Simulation button (recommended).
+
+SIMULATION TYPES YOU WILL USE:
+
+Transient (.tran) — watch signals change over time:
+  .tran 1n 10u        (1ns timestep, 10us total)
+  Use for: comparator switching, SAR ADC conversion waveforms
+
+AC (.ac) — frequency response:
+  .ac dec 100 1 1Meg  (100 points per decade, 1Hz to 1MHz)
+  Use for: verifying 300Hz HPF and 5kHz LPF cutoff frequencies
+
+DC (.dc) — DC sweep:
+  .dc Vin 0 1.8 0.01  (sweep Vin from 0 to 1.8V in 10mV steps)
+  Use for: comparator trip point, filter DC behavior
+
+Operating point (.op):
+  .op
+  Use for: checking bias currents and voltage levels
+
+VIEWING RESULTS:
+After simulation, open waveforms with GTKWave:
+$ gtkwave simulation_output.raw &
+
+Or use Xschem's built-in waveform viewer as described above.
+
+--------------------------------------------------------------------------------
+2.3 Magic — Layout Editor
+--------------------------------------------------------------------------------
+
+PURPOSE: Draw the physical layout of your analog circuits.
+         This is what actually gets fabricated.
+
+LAUNCHING:
+$ magic -T /foss/pdks/sky130A/libs.tech/magic/sky130A.tech &
+
+Or simply:
+$ magic &
+(Magic should find the SKY130A tech file automatically via PDK_ROOT)
+
+BASIC NAVIGATION:
+- Zoom in:           Z
+- Zoom out:          Shift+Z
+- Fit to window:     Ctrl+Z or press 3
+- Pan:               Arrow keys or middle mouse drag
+- Select box:        Left click drag
+- Paint layer:       Select layer in sidebar, left click drag in layout
+- Erase layer:       E key after selecting area
+
+LAYERS YOU WILL USE FOR YOUR DESIGN:
+- ndiff, pdiff     — active regions for NMOS/PMOS
+- poly             — gate material and poly resistors
+- nwell            — N-well for PMOS transistors
+- li1              — local interconnect (lowest metal)
+- met1             — Metal 1
+- met2             — Metal 2
+- met3             — Metal 3
+- met4             — Metal 4 (used for power pins — do not block)
+- mcon, via, via2  — connections between metal layers
+
+NOTE: Do NOT use Metal 5 (met5). Tiny Tapeout uses it for the power grid.
+
+RUNNING DRC (Design Rule Check):
+In Magic's command window (the terminal at the bottom):
+  drc on
+  drc check
+Magic shows DRC violations as white hatching on the layout.
+Fix all DRC errors before proceeding to LVS.
+
+EXTRACTING FOR LVS AND SIMULATION:
+In Magic's command window:
+  extract all
+  ext2spice hierarchy on
+  ext2spice format ngspice
+  ext2spice
+This creates a .spice file from your layout with parasitic information.
+
+EXPORTING GDS (final step before submission):
+In Magic's command window:
+  gds write ../gds/tt_um_sidhantm123_neural_adc.gds
+
+EXPORTING LEF (needed for shuttle integration):
+  lef write ../lef/tt_um_sidhantm123_neural_adc.lef -pinonly
+
+SAVING LAYOUT:
+File → Save  or  save your_design_name
+Magic saves as .mag files.
+Save all .mag files to: /foss/designs/mag/
+
+--------------------------------------------------------------------------------
+2.4 netgen — LVS (Layout vs Schematic)
+--------------------------------------------------------------------------------
+
+PURPOSE: Verifies your Magic layout matches your Xschem schematic.
+         Catches wiring mistakes — wrong connections, missing wires, etc.
+
+RUNNING LVS:
+$ netgen -batch lvs "your_layout.spice your_top_module" \
+  "your_schematic.spice your_top_module" \
+  /foss/pdks/sky130A/libs.tech/netgen/sky130A_setup.tcl \
+  lvs_output.txt
+
+A cleaner way — run from inside Magic after extracting:
+In Magic command window:
+  netgen -batch lvs
+
+INTERPRETING RESULTS:
+- "Circuits match uniquely." = LVS passed, layout matches schematic
+- Any other output = there are mismatches to fix
+
+Common LVS errors:
+- "No corresponding node" — a net in schematic not found in layout
+- "Mismatch" — components connected differently in layout vs schematic
+- Extra/missing devices — component in one but not the other
+
+Do not proceed to post-layout simulation until LVS is clean.
+
+
+================================================================================
+PART 3 — DIGITAL WORKFLOW (Mac Natively, .venv active)
+================================================================================
+
+The digital workflow:
+Write Verilog → Test with cocotb → Harden with LibreLane → Check output
+
+--------------------------------------------------------------------------------
+3.1 Writing Verilog
+--------------------------------------------------------------------------------
+
+Write your Verilog files in VS Code. Save them to:
+  /ttsky-analog-smoola/src/
+
+YOUR DIGITAL BLOCKS TO WRITE:
+1. sar_fsm.v          — SAR control state machine          [DONE — tested, all 6 tests pass]
+2. threshold_det.v    — Spike threshold comparator         [DONE — tested, all 4 tests pass]
+3. refractory_ctr.v   — Refractory period counter          [DONE — tested, all 5 tests pass]
+4. spike_counter.v    — 8-bit spike event counter          [DONE — tested, all 4 tests pass]
+5. output_mux.v       — Selects between ADC output and spike count [DONE — tested, all 4 tests pass]
+6. digital_top.v      — Top-level that connects all blocks above   [DONE — tested, all 5 tests pass]
+
+REQUIRED MODULE INTERFACE (top level must match exactly):
+module tt_um_sidhantm123_neural_adc (
+    input  wire [7:0] ui_in,    // Dedicated inputs
+    output wire [7:0] uo_out,   // Dedicated outputs
+    input  wire [7:0] uio_in,   // IOs: Input path
+    output wire [7:0] uio_out,  // IOs: Output path
+    output wire [7:0] uio_oe,   // IOs: Enable path (active high)
+    input  wire       ena,      // goes high when design is enabled
+    input  wire       clk,      // clock
+    input  wire       rst_n     // active low reset
+);
+
+IMPORTANT VERILOG RULES FOR ASIC (different from FPGA):
+- NO initial blocks — flops have random state at power on, use rst_n
+- Always use explicit reset: if (!rst_n) begin ... end
+- Avoid latches — use always @(posedge clk) for registers
+- Don't rely on synthesis defaults — drive every output explicitly
+- Keep unused outputs tied to GND: assign uio_oe = 8'b0;
+
+PIN ASSIGNMENTS (from DESIGN_NOTES.md):
+  ui_in[0]   → HPF enable
+  ui_in[1]   → LPF enable
+  ui_in[7:2] → 6-bit spike threshold
+  uo_out[7:0]→ 8-bit data output (ADC sample or spike count)
+  uio_in[0]  → mode select (0=ADC, 1=spike count)
+  uio_out[1] → spike event pulse
+  uio_oe     → set bits high for outputs, low for inputs
+
+--------------------------------------------------------------------------------
+3.2 Testing with cocotb
+--------------------------------------------------------------------------------
+
+PURPOSE: Verify your Verilog works correctly before hardening.
+         Tests are written in Python and simulate the design with iverilog.
+
+LOCATION: All test files go in: ttsky-analog-smoola/test/
+
+KEY FILES:
+- test/test_sar_fsm.py        — your cocotb test for the SAR FSM
+- test/Makefile               — tells cocotb which files to simulate
+
+ACTUAL Makefile (test/Makefile) — parameterized for all blocks:
+
+  SIM ?= icarus
+  TOPLEVEL_LANG ?= verilog
+  SRC_DIR = $(PWD)/../src
+
+  BLOCK ?= sar_fsm
+
+  VERILOG_SOURCES = $(SRC_DIR)/$(BLOCK).v
+  TOPLEVEL        = $(BLOCK)
+  MODULE          = test_$(BLOCK)
+
+  include $(shell cocotb-config --makefiles)/Makefile.sim
+
+RUNNING TESTS — per block:
+  cd test
+
+  # Default (sar_fsm):
+  make
+
+  # threshold_det (no clock — combinational):
+  make BLOCK=threshold_det
+
+  # refractory_ctr — MUST pass REFRACTORY_CYCLES via COMPILE_ARGS,
+  # and MUST clean first when changing compile-time parameters:
+  make BLOCK=refractory_ctr clean && \
+  make BLOCK=refractory_ctr COMPILE_ARGS="-P refractory_ctr.REFRACTORY_CYCLES=8"
+
+CRITICAL: COMPILE_ARGS vs SIM_ARGS
+  Icarus Verilog has two separate stages:
+  - iverilog (compile): COMPILE_ARGS controls this. Use for -P parameter overrides.
+  - vvp (run):         SIM_ARGS controls this. Does NOT accept -P.
+  If you pass -P via SIM_ARGS, vvp will error with "illegal option -- P".
+  Always use COMPILE_ARGS for Verilog parameter overrides.
+
+CRITICAL: Non-blocking assign (NBA) timing in cocotb
+  await RisingEdge(dut.clk) resumes in the active region of the clock edge,
+  BEFORE Verilog non-blocking assigns have propagated. Reading a register
+  output immediately after RisingEdge gives the old (pre-edge) value.
+
+  WRONG — reads stale value:
+    await RisingEdge(dut.clk)
+    assert dut.some_reg.value == expected  # reads OLD value!
+
+  CORRECT — always add Timer(1ns) to let NBAs settle:
+    async def clk_edge(dut):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")   # lets NBA region propagate
+
+    await clk_edge(dut)
+    assert dut.some_reg.value == expected  # reads NEW value ✓
+
+  This pattern is used in all three completed testbenches.
+  Also requires `timescale 1ns/1ps` at the top of every .v file.
+
+BASIC TEST FILE STRUCTURE:
+
+  import cocotb
+  from cocotb.clock import Clock
+  from cocotb.triggers import RisingEdge, Timer
+
+  async def clk_edge(dut):
+      await RisingEdge(dut.clk)
+      await Timer(1, units="ns")
+
+  async def reset_dut(dut):
+      dut.rst_n.value = 0
+      await clk_edge(dut)
+      await clk_edge(dut)
+      dut.rst_n.value = 1
+      await Timer(1, units="ns")
+
+  @cocotb.test()
+  async def test_something(dut):
+      cocotb.start_soon(Clock(dut.clk, 1000, units="ns").start())
+      await reset_dut(dut)
+      # drive inputs, await clk_edge, assert outputs
+
+VIEWING WAVEFORMS FROM TESTS:
+After running make, a tb.vcd file is generated:
+  gtkwave tb.vcd
+
+(Run this on Mac — gtkwave may not be available natively,
+use the version inside the Docker container instead:
+  copy tb.vcd to /foss/designs/test/
+  then in container: gtkwave /foss/designs/test/tb.vcd &)
+
+RUNNING GATE LEVEL TESTS (after hardening):
+  cd test
+  make GATES=yes
+
+This runs your tests against the post-synthesis netlist instead of
+the RTL, catching bugs that pre-synthesis simulation misses.
+
+--------------------------------------------------------------------------------
+3.3 Hardening with LibreLane
+--------------------------------------------------------------------------------
+
+PURPOSE: Convert your Verilog to a physical GDS layout (place and route).
+         This is done for the digital blocks only.
+         The analog blocks are laid out manually in Magic.
+
+SETUP (only needed if container is rebuilt):
+  cd ~/Desktop/TinyTapeout/ttsky-analog-smoola
+  git clone https://github.com/TinyTapeout/tt-support-tools tt
+
+GENERATE CONFIG:
+  ./tt/tt_tool.py --create-user-config
+
+HARDEN:
+  ./tt/tt_tool.py --harden
+
+This runs synthesis (Yosys) and place-and-route (OpenROAD) automatically.
+Results appear in the runs/ directory.
+
+CHECK FOR WARNINGS:
+  ./tt/tt_tool.py --print-warnings
+
+Pay attention to:
+- Clock warnings — multiple drivers, unconnected clock nets
+- Synthesis warnings — undriven outputs, combinational loops
+- Timing violations — setup/hold time failures
+
+VIEW IN OPENROAD GUI:
+  ./tt/tt_tool.py --open-in-openroad
+
+VIEW IN KLAYOUT:
+  ./tt/tt_tool.py --open-in-klayout
+
+WHERE OUTPUT FILES GO:
+  runs/wokwi/results/final/gds/        — final GDS
+  runs/wokwi/results/final/verilog/gl/ — gate level netlist for GL testing
+
+
+================================================================================
+PART 4 — BLOCK DEVELOPMENT ORDER
+================================================================================
+
+Build and verify in this order. Do not move to the next block until the
+current one is fully tested.
+
+DIGITAL BLOCKS (in order):
+
+1. SAR FSM (sar_fsm.v)                                      [DONE]
+   - Inputs: clk, rst_n, comparator_in (1 bit)
+   - Outputs: dac_bits[5:0], conv_done (1 bit), adc_result[5:0]
+   - 7 states (0–5 = conversion, 6 = done/restart), 7 cycles per conversion
+   - conv_done pulses high for exactly 1 clock cycle when conversion finishes
+   - Automatically restarts the next conversion (no start_conv signal needed)
+   - Key NBA pattern: uses comparator_in directly in dac_bits concat (not
+     result[N]) to avoid reading the value before it has been written
+   - Test: make  (runs test_sar_fsm.py — 6 tests, all pass)
+
+2. Threshold Detector (threshold_det.v)                     [DONE]
+   - Inputs: adc_result[5:0], threshold[5:0]
+   - Output: spike (1 bit)
+   - Purely combinational: assign spike = (adc_result >= threshold)
+   - No clock needed — testbench uses Timer(1, units="ns") to settle
+   - Test: make BLOCK=threshold_det  (4 tests, all pass)
+
+3. Refractory Counter (refractory_ctr.v)                    [DONE]
+   - Parameter: REFRACTORY_CYCLES = 100 (default, overridable)
+   - Inputs: clk, rst_n, spike_in
+   - Output: spike_valid (1 bit)
+   - 8-bit down-counter; loads REFRACTORY_CYCLES when spike accepted
+   - spike_valid pulses high exactly 1 cycle per accepted spike
+   - Spikes during refractory are silently dropped (counter not reloaded)
+   - Same default-0 NBA pattern as conv_done in sar_fsm
+   - Test: make BLOCK=refractory_ctr clean &&
+           make BLOCK=refractory_ctr COMPILE_ARGS="-P refractory_ctr.REFRACTORY_CYCLES=8"
+           (5 tests, all pass)
+
+4. Spike Counter (spike_counter.v)                          [DONE]
+   - Inputs: clk, rst_n, spike_valid
+   - Output: count[7:0]
+   - Single always block: if (spike_valid) count <= count + 1
+   - Wraps naturally at 255 → 0 (8-bit overflow, no special handling needed)
+   - Test: make BLOCK=spike_counter  (4 tests, all pass)
+
+5. Output Mux (output_mux.v)                               [DONE]
+   - Inputs: adc_result[5:0], spike_count[7:0], mode_select
+   - Output: data_out[7:0]
+   - Single assign: data_out = mode_select ? spike_count : {2'b00, adc_result}
+   - Purely combinational — no clock, Timer(1ns) settle in testbench
+   - Test: make BLOCK=output_mux  (4 tests, all pass)
+
+6. Digital Top (digital_top.v)                             [DONE]
+   - Instantiates all 5 sub-blocks and wires them together
+   - Ports: clk, rst_n, comparator_in, threshold[5:0], mode_select,
+            dac_bits[5:0], data_out[7:0], spike_valid
+   - comparator_in and dac_bits are unconnected in Verilog — the actual
+     metal connections to the analog blocks are made in Magic layout
+   - Makefile uses a special ifeq block to include all 6 source files
+   - Pipeline latency: after adc_result is latched, need 2 extra edges
+     before count is updated (+1 for refractory_ctr, +1 for spike_counter)
+   - Test: make BLOCK=digital_top  (5 tests, all pass)
+
+   PIPELINE TIMING (critical for integration tests):
+     After run_conversion() ends (FSM in state 0):
+       +1 edge → refractory_ctr clocks → spike_valid goes high
+       +1 edge → spike_counter clocks  → count increments
+     Always call await_spike_pipeline() before reading count.
+     Use wait_refractory(104 edges) between conversions:
+       104 = 14×7+6 satisfies both (FSM returns to state 0) AND (counter drains)
+
+7. project.v (TT submission wrapper)                       [DONE]
+   - Instantiates digital_top with TT port mapping
+   - ui_in[7:2] → threshold, uio_in[0] → mode_select
+   - uo_out → data_out, uio_out[1] → spike_valid
+   - uio_oe = 8'b00000010 (only uio[1] is an output)
+   - uio_out[7:2] and uio_out[0] tied to 0 (unused/input pins)
+   - comparator_in and dac_bits declared as floating wires in RTL;
+     connected to analog blocks in Magic layout at tape-out time
+
+   info.yaml source_files must list ALL .v files:
+     project.v, digital_top.v, sar_fsm.v, threshold_det.v,
+     refractory_ctr.v, spike_counter.v, output_mux.v
+   Without this, LibreLane only sees project.v and cannot find sub-modules.
+
+ANALOG BLOCKS (in order):
+
+1. Comparator
+   - Schematic in Xschem, simulate with ngspice
+   - Verify it switches correctly across full input range (0 to 1.8V)
+   - Simulate all 5 process corners (tt, ss, ff, sf, fs)
+   - Layout in Magic, LVS with netgen, post-layout simulation
+
+2. High-Pass Filter (300 Hz)
+   - Schematic and simulation: verify -3dB at 300Hz (AC simulation)
+   - Use pseudo-resistor topology (back-to-back PMOS) not poly resistor
+   - Verify DC blocking behavior
+   - Layout and LVS
+
+3. Low-Pass Filter (5 kHz)
+   - Schematic and simulation: verify -3dB at 5kHz
+   - Simpler than HPF — standard RC
+   - Layout and LVS
+
+4. Capacitor DAC
+   - Layout only (no complex simulation needed for the caps themselves)
+   - 64 unit capacitors in binary-weighted array
+   - Unit cap: ~5x5 um MIM capacitors
+   - Switch transistors: NMOS pass gates on each cap
+
+
+================================================================================
+PART 5 — SUBMISSION CHECKLIST
+================================================================================
+
+Before submitting to app.tinytapeout.com:
+
+DIGITAL:
+  [x] sar_fsm.v — written, 6/6 cocotb tests pass
+  [x] threshold_det.v — written, 4/4 cocotb tests pass
+  [x] refractory_ctr.v — written, 5/5 cocotb tests pass
+  [x] spike_counter.v — written, 4/4 cocotb tests pass
+  [x] output_mux.v — written, 4/4 cocotb tests pass
+  [x] digital_top.v — written, 5/5 cocotb integration tests pass
+  [x] project.v — filled in, instantiates digital_top, uio_oe set correctly
+  [x] info.yaml source_files — lists all 7 .v files
+  [ ] Gate level tests passing
+  [x] LibreLane hardening completes without errors (DRC, LVS, Antenna all pass)
+  [ ] No synthesis warnings (check with --print-warnings)
+  [ ] No timing violations
+
+ANALOG:
+  [ ] Comparator: schematic, sim (all corners), layout, LVS clean
+  [ ] HPF: schematic, sim (AC response verified), layout, LVS clean
+  [ ] LPF: schematic, sim (AC response verified), layout, LVS clean
+  [ ] Cap DAC: layout complete, switch transistors sized correctly
+
+INTEGRATION:
+  [ ] Digital macro placed inside analog Magic layout
+  [ ] Full chip DRC clean (no violations)
+  [ ] Full chip LVS clean
+  [ ] GDS exported to gds/tt_um_sidhantm123_neural_adc.gds
+  [ ] LEF exported to lef/tt_um_sidhantm123_neural_adc.lef
+
+REPOSITORY:
+  [ ] info.yaml fully filled in (title, author, description, pinout)
+  [ ] src/project.v module name matches top_module in info.yaml
+  [ ] docs/info.md written with how_it_works and how_to_test
+  [ ] GitHub Actions enabled (Actions tab → Enable)
+  [ ] GitHub Pages set to GitHub Actions
+    (Settings → Pages → Source → GitHub Actions)
+  [ ] GDS action passes (green checkmark)
+  [ ] Docs action passes (green checkmark)
+
+SUBMISSION:
+  [ ] Go to app.tinytapeout.com
+  [ ] Find your project
+  [ ] Click "SUBMIT A REVISION"
+  [ ] Target shuttle: TTSKY26a
+  [ ] Submission deadline: 28 October 2026
+
+
+================================================================================
+PART 6 — TROUBLESHOOTING
+================================================================================
+
+PROBLEM: "Dev Container: Reopen in Container" doesn't appear
+SOLUTION: Make sure Docker Desktop is open and running (whale icon in menu bar)
+          Then: Cmd+Shift+P → "Dev Containers: Reopen in Container"
+
+PROBLEM: which xschem / which magic returns empty
+SOLUTION: The PATH is not set. Run:
+            for tool_dir in /foss/tools/*/bin; do
+                export PATH="$tool_dir:$PATH"
+            done
+          If this keeps happening, check that remoteEnv is correct in
+          .devcontainer/devcontainer.json and rebuild the container.
+
+PROBLEM: xschem & produces no window
+SOLUTION: XQuartz is not running. Open it from Spotlight first.
+          Also run: xhost + 127.0.0.1
+          Then try xschem & again.
+
+PROBLEM: XQuartz window disappears suddenly
+SOLUTION: XQuartz idle timeout killed the connection. Keep a terminal
+          active with htop running to prevent this.
+
+PROBLEM: ngspice simulation produces errors about models
+SOLUTION: Check .spiceinit exists:
+            cat ~/.spiceinit
+          Should show:
+            set ngbehavior=hsa
+            set ng_nomodcheck
+          If missing, recreate it (see Section 1 of setup log).
+
+PROBLEM: pip install fails with numpy build error
+SOLUTION: You are using Python 3.13. Recreate venv with Python 3.12:
+            deactivate
+            rm -rf .venv
+            /usr/local/opt/python@3.12/bin/python3.12 -m venv .venv --upgrade-deps
+            source .venv/bin/activate
+            pip install -r tt/requirements.txt
+
+PROBLEM: cocotb tests fail with "ModuleNotFoundError"
+SOLUTION: Virtual environment is not active. Run:
+            source .venv/bin/activate
+
+PROBLEM: LibreLane hardening fails — generic
+SOLUTION: Check for synthesis errors first:
+            ./tt/tt_tool.py --print-warnings
+          Fix any Verilog issues reported, then retry --harden.
+          Verify PDK environment variables are set:
+            export PDK=sky130A
+            export PDK_ROOT=~/ttsetup/pdk
+
+PROBLEM: LibreLane Stage 8 fails — "1 Yosys check errors found"
+          Synthesis log says: "Wire ... is used but has no driver"
+SOLUTION: This happens for analog-digital boundary wires in project.v that are
+          intentionally undriven in RTL (e.g. comparator_in — driven by the
+          analog block in layout, not in Verilog). Yosys flags them as errors.
+          Fix: add a tie-low placeholder in src/project.v immediately after the
+          wire declaration:
+            assign comparator_in = 1'b0;  // RTL stub; overridden in Magic layout
+          This satisfies Yosys. The real connection is made via metal routing in
+          the Magic analog layout at tape-out time.
+
+PROBLEM: LibreLane Stage 26 fails — "ua[N] not found in template layout"
+          Error: Odb.ApplyDEFTemplate failed — ua pins not in template
+SOLUTION: The wrong DEF template is selected. The digital template
+          (tt_block_1x2_pg.def) has no ua analog pin slots.
+          Fix: in src/user_config.json, change FP_DEF_TEMPLATE to the analog
+          template:
+            "FP_DEF_TEMPLATE": "dir::../tt/tech/sky130A/def/analog/tt_analog_1x2.def"
+          Use tt_analog_1x2_3v3.def instead if uses_3v3: true in info.yaml.
+
+PROBLEM: LibreLane Stage 38 fails — "Pin clk is completely outside the die area"
+          Error: OpenROAD.GlobalRouting GRT-0209
+SOLUTION: FP_SIZING defaults to "relative", so LibreLane auto-computes a small
+          die area from synthesis density and ignores the DIE_AREA setting.
+          The analog template places pins assuming the full 161x225.76 um die,
+          so they land outside the shrunken auto-computed die.
+          Fix: add to src/user_config.json:
+            "FP_SIZING": "absolute"
+          This forces the floorplan to use DIE_AREA = "0 0 161.00 225.76"
+          exactly, matching the analog template pin coordinates.
+
+PROBLEM: GitHub Actions GDS build fails
+SOLUTION: Check the Actions log for specific errors.
+          Common causes:
+          - Verilog syntax error in src/ files
+          - info.yaml missing required fields
+          - top_module name doesn't match module name in project.v
+          Fix the issue, commit, and push to re-trigger the action.
+
+
+================================================================================
+PART 7 — USEFUL COMMANDS QUICK REFERENCE
+================================================================================
+
+CONTAINER:
+  uname -a                    Verify you are inside the container
+  echo $PDK                   Should print sky130A
+  ls /foss/pdks               List installed PDKs
+  ls /foss/designs            List your project files
+
+XSCHEM:
+  xschem &                    Launch Xschem
+  (inside Xschem) n           Generate netlist
+  (inside Xschem) s           Save schematic
+  (inside Xschem) Insert      Add component
+
+MAGIC:
+  magic &                     Launch Magic
+  (command window) drc check  Run design rule check
+  (command window) extract all  Extract layout to SPICE
+  (command window) ext2spice  Convert extraction to SPICE format
+
+NGSPICE:
+  ngspice circuit.spice       Run simulation
+  (inside ngspice) plot v(out) Plot a signal
+  (inside ngspice) quit       Exit
+
+NETGEN:
+  netgen -batch lvs "layout.spice top" "schematic.spice top" \
+    sky130A_setup.tcl result.txt    Run LVS
+
+DIGITAL (Mac, .venv active):
+  source .venv/bin/activate   Activate virtual environment
+  deactivate                  Deactivate virtual environment
+
+  # Run tests — per block (from test/ directory):
+  make                                          Run sar_fsm tests (default)
+  make BLOCK=threshold_det                      Run threshold_det tests
+  make BLOCK=refractory_ctr clean && \
+    make BLOCK=refractory_ctr \
+    COMPILE_ARGS="-P refractory_ctr.REFRACTORY_CYCLES=8"   Run refractory_ctr tests
+  make BLOCK=spike_counter                                  Run spike_counter tests
+  make BLOCK=output_mux                                     Run output_mux tests
+  make BLOCK=digital_top                                    Run integration tests (all blocks)
+
+  make GATES=yes              Run gate level tests (after hardening)
+
+  # Hardening:
+  ./tt/tt_tool.py --create-user-config   Generate LibreLane config
+  ./tt/tt_tool.py --harden              Run hardening
+  ./tt/tt_tool.py --print-warnings      Check for issues
+
+GIT:
+  git status                  Check what has changed
+  git add .                   Stage all changes
+  git commit -m "message"     Commit changes
+  git push                    Push to GitHub
+
+
+================================================================================
+END OF WORKING INSTRUCTIONS
+================================================================================

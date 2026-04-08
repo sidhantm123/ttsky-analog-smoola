@@ -1,0 +1,485 @@
+================================================================================
+NEURAL ADC - TINY TAPEOUT SKY130A
+COMPLETE ENVIRONMENT SETUP LOG
+================================================================================
+Project: tt_um_sidhantm123_neural_adc
+Repo: https://github.com/sidhantm123/ttsky-analog-smoola
+Machine: MacBook Air M1 (Apple Silicon, macOS)
+Date: April 2026
+================================================================================
+
+This document is a full record of every step taken to set up the development
+environment for this project, including mistakes made, issues encountered, and
+how each was resolved.
+
+--------------------------------------------------------------------------------
+SECTION 1 — PROJECT REPOSITORY
+--------------------------------------------------------------------------------
+
+WHAT WE DID:
+Created the project repository from the Tiny Tapeout analog template.
+The correct template for a SKY shuttle analog submission is:
+https://github.com/TinyTapeout/ttsky-analog-template
+
+The repo was created at: https://github.com/sidhantm123/ttsky-analog-smoola
+
+ISSUES WITH info.yaml (caught and fixed):
+The default info.yaml from the template had several problems that needed fixing:
+
+1. uses_3v3: true — was incorrectly set to true. Changed to false since the
+   design uses standard 1.8V supply. The 3.3V option requires a different DEF
+   template and adds unnecessary complexity.
+
+2. top_module: "tt_um_analog_smoola" — missing the GitHub username. Must follow
+   the convention tt_um_<githubusername>_<projectname> to guarantee uniqueness
+   on the shuttle. Corrected to: tt_um_sidhantm123_neural_adc
+
+3. description mentioned "8-bit ADC" — incorrect, design is 6-bit. Updated
+   to reflect the actual design.
+
+4. All pinout fields were empty — filled in with the full pin assignment
+   for the project.
+
+DESIGN NOTES FILE:
+Created DESIGN_NOTES.md in the project root to serve as a context file for
+Claude Code sessions. This file contains the full architecture, pin assignments,
+design decisions and rationale, workflow overview, and a checklist of remaining
+tasks.
+
+Added DESIGN_NOTES.md to .gitignore since it is a local reference file and
+not part of the actual design submission.
+
+Command used:
+  echo "DESIGN_NOTES.md" >> .gitignore
+
+
+--------------------------------------------------------------------------------
+SECTION 2 — DEVCONTAINER SETUP (ANALOG TOOLCHAIN)
+--------------------------------------------------------------------------------
+
+GOAL:
+Get Magic, Xschem, ngspice, netgen, and the SKY130A PDK running inside a
+Docker container accessible from VS Code.
+
+TOOL CHOSEN:
+IIC-OSIC-TOOLS by Harald Pretl (Johannes Kepler University)
+GitHub: https://github.com/iic-jku/IIC-OSIC-TOOLS
+DockerHub image: hpretl/iic-osic-tools:latest
+
+This image contains all analog and digital open source IC design tools
+pre-installed and pre-configured with the SKY130A PDK. It natively supports
+aarch64/arm64 (Apple Silicon) since release 2025.01.
+
+--- ATTEMPT 1: Wrong Docker version error ---
+
+PROBLEM:
+When first trying to reopen in container, VS Code showed:
+"Docker version 17.12.0 or later required."
+
+CAUSE:
+An old version of Docker was installed on the system (likely installed via
+brew at some earlier point), conflicting with Docker Desktop.
+
+SOLUTION:
+Uninstalled old Docker CLI tools installed via brew:
+  brew uninstall docker
+  brew uninstall docker-compose
+  brew uninstall docker-cli
+
+Downloaded Docker Desktop (Apple Silicon version) directly from:
+  https://desktop.docker.com/mac/main/arm64/Docker.dmg
+
+Installed Docker Desktop, opened it, and waited for it to fully start
+(whale icon in menu bar stops animating = ready).
+
+--- ATTEMPT 2: ghcr.io access denied error ---
+
+PROBLEM:
+After fixing Docker version, VS Code tried to pull:
+  ghcr.io/iic-jku/iic-osic-tools-devcontainer:2024.12
+
+And received:
+  [httpOci] 403: Credentials for 'ghcr.io' may be expired.
+  {"errors":[{"code":"DENIED","message":"requested access to the resource
+  is denied"}]}
+
+CAUSE:
+Two problems:
+1. The ghcr.io (GitHub Container Registry) image tag 2024.12 for the
+   devcontainer variant either does not exist publicly or requires
+   authentication.
+2. Docker credentials for ghcr.io were expired.
+
+SOLUTION:
+Switched from the ghcr.io image to the public DockerHub image instead.
+Updated .devcontainer/devcontainer.json to use hpretl/iic-osic-tools:latest
+which is publicly accessible without credentials.
+
+Also cleared stale credentials:
+  docker logout ghcr.io
+  docker logout
+
+--- DEVCONTAINER.JSON (INITIAL WORKING VERSION) ---
+
+Created .devcontainer/devcontainer.json with:
+
+{
+  "name": "IIC-OSIC-TOOLS",
+  "image": "hpretl/iic-osic-tools:latest",
+  "runArgs": [
+    "--platform=linux/arm64"
+  ],
+  "containerEnv": {
+    "PDK": "sky130A",
+    "PDK_ROOT": "/foss/pdks"
+  },
+  "mounts": [
+    "source=${localWorkspaceFolder},target=/foss/designs,type=bind"
+  ],
+  "workspaceFolder": "/foss/designs"
+}
+
+Image download: approximately 4GB compressed, ~20GB extracted.
+Download took ~20-30 minutes on a standard home connection.
+
+After download, VS Code reloaded and the container was running.
+Verified with: uname -a
+Output: Linux b1387a21f944 6.12.76-linuxkit aarch64 GNU/Linux
+(Linux = inside container, aarch64 = ARM64 Apple Silicon)
+
+--- ISSUE: Tools not found in PATH ---
+
+PROBLEM:
+After entering the container, running:
+  which magic
+  which xschem
+  which ngspice
+  which netgen
+All returned empty — no output, tools not found.
+
+CAUSE:
+The IIC-OSIC-TOOLS image installs each tool into its own subdirectory
+under /foss/tools/ rather than a single shared bin directory. For example:
+  /foss/tools/magic/bin/magic
+  /foss/tools/xschem/bin/xschem
+  /foss/tools/ngspice/bin/ngspice
+  /foss/tools/netgen/bin/netgen
+
+The devcontainer mode does not automatically add these to PATH.
+
+CONFIRMED WITH:
+  find /foss -name "magic" -type f
+  → /foss/tools/magic/bin/magic
+  find /foss -name "xschem" -type f
+  → /foss/tools/xschem/bin/xschem
+  ls /foss/tools
+  → showed all tool directories
+
+TEMPORARY FIX (for current session only):
+  for tool_dir in /foss/tools/*/bin; do
+      export PATH="$tool_dir:$PATH"
+  done
+
+--- ATTEMPT 1 at permanent fix: postStartCommand ---
+
+Tried adding postStartCommand to devcontainer.json:
+  "postStartCommand": "for d in /foss/tools/*/bin; do export PATH=$d:$PATH;
+  done && export PATH=/foss/tools/bin:$PATH"
+
+PROBLEM:
+postStartCommand sets PATH for the command that runs but does NOT persist
+into interactive terminal sessions. After rebuilding, which xschem still
+returned empty.
+
+CAUSE:
+This is a known devcontainer limitation — environment variables set in
+postStartCommand do not carry over to new terminals opened in VS Code.
+
+--- ATTEMPT 2 at permanent fix: remoteEnv ---
+
+SOLUTION:
+Used remoteEnv in devcontainer.json instead, which correctly sets environment
+variables for all terminal sessions inside the container.
+
+Explicitly listed each tool's bin path in the PATH variable.
+
+FINAL WORKING devcontainer.json:
+
+{
+  "name": "IIC-OSIC-TOOLS",
+  "image": "hpretl/iic-osic-tools:latest",
+  "runArgs": [
+    "--platform=linux/arm64"
+  ],
+  "remoteEnv": {
+    "PDK": "sky130A",
+    "PDK_ROOT": "/foss/pdks",
+    "PATH": "/foss/tools/magic/bin:/foss/tools/xschem/bin:/foss/tools/ngspice/bin:/foss/tools/netgen/bin:/foss/tools/klayout/bin:/foss/tools/iverilog/bin:/foss/tools/gtkwave/bin:/foss/tools/yosys/bin:/foss/tools/verilator/bin:/foss/tools/sak/bin:${containerEnv:PATH}"
+  },
+  "mounts": [
+    "source=${localWorkspaceFolder},target=/foss/designs,type=bind"
+  ],
+  "workspaceFolder": "/foss/designs"
+}
+
+After rebuilding (Cmd+Shift+P → Dev Containers: Rebuild Container),
+all tools were found immediately in fresh terminals:
+  which magic    → /foss/tools/magic/bin/magic
+  which xschem   → /foss/tools/xschem/bin/xschem
+  which ngspice  → /foss/tools/ngspice/bin/ngspice
+  which netgen   → /foss/tools/netgen/bin/netgen
+  which iverilog → /foss/tools/iverilog/bin/iverilog
+
+--- PDK VERIFICATION ---
+
+  echo $PDK      → sky130A
+  echo $PDK_ROOT → /foss/pdks
+  ls $PDK_ROOT   → ciel  gf180mcuD  ihp-sg13g2  sky130A
+
+SKY130A PDK confirmed present.
+
+--- .SPICEINIT SETUP ---
+
+Required for ngspice to work correctly with SKY130A models.
+Without this file, simulations are slow and may produce incorrect results.
+
+Commands run inside container:
+  mkdir -p ~/.xschem/simulations
+  echo 'set ngbehavior=hsa' > ~/.xschem/simulations/.spiceinit
+  echo 'set ng_nomodcheck' >> ~/.xschem/simulations/.spiceinit
+  echo 'set ngbehavior=hsa' > ~/.spiceinit
+  echo 'set ng_nomodcheck' >> ~/.spiceinit
+
+NOTE: These files live inside the container and will reset if the container
+is fully rebuilt. If tools start behaving strangely after a rebuild, recreate
+these files.
+
+ISSUE ENCOUNTERED: Only one line written on first attempt.
+First attempt accidentally only wrote one line because both echo commands
+were not run. The > operator creates/overwrites, >> appends.
+Fixed by rerunning both commands in sequence.
+
+--- GUI VERIFICATION ---
+
+Opened XQuartz on Mac (Cmd+Space → XQuartz → Enter).
+Then in container terminal:
+  xschem &
+
+Xschem window appeared on Mac screen via XQuartz. GUI confirmed working.
+
+
+--------------------------------------------------------------------------------
+SECTION 3 — MAC NATIVE SETUP (DIGITAL TOOLCHAIN)
+--------------------------------------------------------------------------------
+
+GOAL:
+Set up iverilog, cocotb, pytest, and librelane on the Mac natively
+(outside Docker) for Verilog simulation and digital block hardening.
+
+--- iverilog ---
+
+Already installed on the system:
+  which iverilog → /usr/local/bin/iverilog
+
+No action needed.
+
+--- VIRTUAL ENVIRONMENT ---
+
+ATTEMPT 1: Python 3.13 (failed)
+
+Created venv with default python3 (which was Python 3.13):
+  python3 -m venv .venv
+  source .venv/bin/activate
+
+PROBLEM 1: Corrupted pip installation
+Running pip showed:
+  ModuleNotFoundError: No module named 'pip._vendor.rich'
+
+Tried: python3 -m ensurepip --upgrade
+Result: Said pip 26.0.1 already satisfied but error persisted.
+
+Fix attempted: Delete and recreate venv:
+  deactivate
+  rm -rf .venv
+  python3 -m venv .venv
+  source .venv/bin/activate
+  python3 -m pip install --upgrade pip
+
+PROBLEM 2: numpy==1.26.4 fails to build on Python 3.13
+Running pip install -r tt/requirements.txt failed with:
+
+  fatal error: 'type_traits' file not found
+  error: metadata-generation-failed
+
+CAUSE:
+The requirements.txt pins numpy==1.26.4 which predates Python 3.13 support.
+numpy added Python 3.13 support in version 2.1.0 (September 2024).
+On Python 3.13 / Apple Silicon, pip tries to build numpy from source since
+no pre-built wheel exists, and the C++ source at that version is incompatible
+with the compiler toolchain.
+
+NOTE: This is a bug in the tt-support-tools repository. The requirements.txt
+header claims it was generated with Python 3.13 but pins a numpy version that
+doesn't support Python 3.13. A bug report was prepared to submit to the
+tt-support-tools repo on GitHub.
+
+SOLUTION: Switch to Python 3.12
+
+  brew install python@3.12
+
+ATTEMPT 2: Python 3.12 (succeeded)
+
+ISSUE: python3.12 not immediately in PATH after brew install.
+Brew prints a message after install saying to add to PATH:
+  export PATH="/usr/local/opt/python@3.12/bin:$PATH"
+
+Used full path to create venv:
+  /usr/local/opt/python@3.12/bin/python3.12 -m venv .venv --upgrade-deps
+  source .venv/bin/activate
+
+Verified correct Python version:
+  python3 --version  → Python 3.12.13
+  pip --version      → pip 26.0.1 from .../python3.12/...
+
+COSMETIC ISSUE: Double parentheses in prompt
+After activating, prompt showed ((.venv) ) instead of (.venv)
+CAUSE: venv was activated twice (source .venv/bin/activate run twice
+without deactivating in between, likely due to shell config also
+showing venv indicator).
+IMPACT: None — purely cosmetic, does not affect functionality.
+
+--- TT-SUPPORT-TOOLS ---
+
+Cloned into project root (tt/ directory is in .gitignore):
+  git clone https://github.com/TinyTapeout/tt-support-tools tt
+
+Installed dependencies:
+  pip install -r tt/requirements.txt
+
+Succeeded on Python 3.12 with no errors.
+
+--- REMAINING PACKAGES ---
+
+  pip install cocotb pytest
+  pip install librelane==2.4.2
+
+--- FINAL VERIFICATION ---
+
+  pip list | grep -E "numpy|cocotb|pytest|librelane|gdstk|klayout"
+
+Output:
+  cocotb              1.8.1
+  gdstk               0.9.60
+  klayout             0.29.12
+  librelane           2.4.2
+  numpy               1.26.4
+  pytest              8.4.2
+
+All six packages confirmed installed.
+
+
+--------------------------------------------------------------------------------
+SECTION 4 — FINAL ENVIRONMENT SUMMARY
+--------------------------------------------------------------------------------
+
+INSIDE DOCKER CONTAINER (VS Code devcontainer):
+Access: Open project in VS Code → green >< icon bottom left →
+        "Reopen in Container" (or automatic on project open)
+
+  Tool        | Location                        | Status
+  ------------|-----------------------------------|---------
+  Xschem      | /foss/tools/xschem/bin/xschem   | Working
+  Magic       | /foss/tools/magic/bin/magic      | Working
+  ngspice     | /foss/tools/ngspice/bin/ngspice  | Working
+  netgen      | /foss/tools/netgen/bin/netgen    | Working
+  iverilog    | /foss/tools/iverilog/bin/iverilog| Working
+  KLayout     | /foss/tools/klayout/bin/klayout  | Working
+  SKY130A PDK | /foss/pdks/sky130A               | Confirmed
+  .spiceinit  | ~/.spiceinit                     | Configured
+
+ON MAC NATIVELY (.venv active):
+Activate with: source .venv/bin/activate (from project root)
+
+  Package     | Version | Purpose
+  ------------|---------|----------------------------------
+  numpy       | 1.26.4  | Numerical ops for layout tools
+  cocotb      | 1.8.1   | Python testbench framework
+  gdstk       | 0.9.60  | GDS file reading/writing
+  klayout     | 0.29.12 | GDS verification Python bindings
+  librelane   | 2.4.2   | RTL to GDS flow for digital blocks
+  pytest      | 8.4.2   | Test runner for cocotb tests
+
+  iverilog available globally at: /usr/local/bin/iverilog
+
+
+--------------------------------------------------------------------------------
+SECTION 5 — KEY FILES IN REPOSITORY
+--------------------------------------------------------------------------------
+
+.devcontainer/devcontainer.json  — Docker container configuration
+.designinit                      — SKY130A PDK environment variables
+                                   (in .gitignore, local only)
+.gitignore                       — Excludes: .venv, tt/, .designinit,
+                                   DESIGN_NOTES.md, runs, *.vcd, etc.
+info.yaml                        — Tiny Tapeout project metadata
+src/project.v                    — Verilog blackbox stub (not synthesized)
+docs/info.md                     — Project documentation
+tt/                              — tt-support-tools (in .gitignore)
+.venv/                           — Python virtual environment (in .gitignore)
+
+
+--------------------------------------------------------------------------------
+SECTION 6 — DAILY WORKFLOW
+--------------------------------------------------------------------------------
+
+ANALOG WORK (inside container):
+1. Open VS Code
+2. Open project folder
+3. Click "Reopen in Container" if not automatic
+4. Open terminal (Ctrl+`)
+5. Verify tools: which xschem magic ngspice netgen
+6. Make sure XQuartz is running on Mac
+7. Run: xschem & or magic &
+
+DIGITAL WORK (on Mac natively):
+1. Open a Mac terminal (not VS Code container terminal)
+2. cd ~/Desktop/TinyTapeout/ttsky-analog-smoola
+3. source .venv/bin/activate
+4. Write Verilog in VS Code
+5. Run tests: cd test && make
+6. Run hardening: ./tt/tt_tool.py --harden
+
+
+--------------------------------------------------------------------------------
+SECTION 7 — KNOWN ISSUES AND NOTES
+--------------------------------------------------------------------------------
+
+1. BUG IN tt-support-tools:
+   requirements.txt pins numpy==1.26.4 which doesn't support Python 3.13.
+   Header claims generated with Python 3.13 — this is a contradiction.
+   Workaround: use Python 3.12 for the virtual environment.
+   Status: Bug report prepared to submit to tt-support-tools repo.
+
+2. .spiceinit RESETS ON CONTAINER REBUILD:
+   The .spiceinit files live inside the container and are lost if the
+   container is fully rebuilt. Recreate them if ngspice behaves strangely:
+     echo 'set ngbehavior=hsa' > ~/.spiceinit
+     echo 'set ng_nomodcheck' >> ~/.spiceinit
+
+3. XQUARTZ IDLE TIMEOUT ON MACOS:
+   XQuartz will kill the X11 connection after a long idle period, causing
+   GUI tools to appear to crash. Workaround: keep a terminal active with
+   something running (e.g. htop) to prevent idle timeout.
+
+4. DOUBLE PARENTHESES IN PROMPT:
+   Prompt shows ((.venv) ) instead of (.venv). Cosmetic only, no impact
+   on functionality. Caused by shell config adding a second venv indicator.
+
+5. postStartCommand DOES NOT SET PATH FOR TERMINALS:
+   Learned that postStartCommand in devcontainer.json sets environment
+   variables only for the command that runs, not for interactive terminals.
+   Use remoteEnv instead for persistent environment variable configuration.
+
+================================================================================
+END OF SETUP LOG
+================================================================================
