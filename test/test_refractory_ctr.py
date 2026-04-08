@@ -46,7 +46,7 @@ async def reset_dut(dut):
 @cocotb.test()
 async def test_single_spike(dut):
     """spike_in=1 for one cycle → spike_valid=1 for exactly that cycle."""
-    cocotb.start_soon(Clock(dut.clk, 1000, units="ns").start())
+    cocotb.start_soon(Clock(dut.clk, 50, units="us").start())
     await reset_dut(dut)
 
     # Verify idle: spike_valid=0 with no input
@@ -73,7 +73,7 @@ async def test_single_spike(dut):
 @cocotb.test()
 async def test_refractory_blocks_second_spike(dut):
     """spike_in held high during refractory period — all blocked."""
-    cocotb.start_soon(Clock(dut.clk, 1000, units="ns").start())
+    cocotb.start_soon(Clock(dut.clk, 50, units="us").start())
     await reset_dut(dut)
 
     # Accept first spike
@@ -99,7 +99,7 @@ async def test_refractory_blocks_second_spike(dut):
 @cocotb.test()
 async def test_refractory_expires(dut):
     """After REFRACTORY_CYCLES cycles, a new spike_in is accepted."""
-    cocotb.start_soon(Clock(dut.clk, 1000, units="ns").start())
+    cocotb.start_soon(Clock(dut.clk, 50, units="us").start())
     await reset_dut(dut)
 
     # Accept first spike
@@ -130,7 +130,7 @@ async def test_refractory_expires(dut):
 @cocotb.test()
 async def test_spike_valid_width(dut):
     """spike_valid must be high for exactly 1 cycle, low for all others."""
-    cocotb.start_soon(Clock(dut.clk, 1000, units="ns").start())
+    cocotb.start_soon(Clock(dut.clk, 50, units="us").start())
     await reset_dut(dut)
 
     dut.spike_in.value = 1
@@ -155,7 +155,7 @@ async def test_spike_valid_width(dut):
 @cocotb.test()
 async def test_no_false_spike_at_idle(dut):
     """With spike_in=0, spike_valid must stay 0 indefinitely."""
-    cocotb.start_soon(Clock(dut.clk, 1000, units="ns").start())
+    cocotb.start_soon(Clock(dut.clk, 50, units="us").start())
     await reset_dut(dut)
 
     dut.spike_in.value = 0

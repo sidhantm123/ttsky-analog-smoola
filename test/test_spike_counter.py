@@ -48,7 +48,7 @@ async def send_spikes(dut, n):
 @cocotb.test()
 async def test_count_spikes(dut):
     """Send 10 spikes and verify count reaches 10."""
-    cocotb.start_soon(Clock(dut.clk, 1000, units="ns").start())
+    cocotb.start_soon(Clock(dut.clk, 50, units="us").start())
     await reset_dut(dut)
 
     assert dut.count.value == 0, "count not 0 after reset"
@@ -72,7 +72,7 @@ async def test_count_spikes(dut):
 @cocotb.test()
 async def test_rollover(dut):
     """Count to 255, send one more spike, verify count wraps to 0."""
-    cocotb.start_soon(Clock(dut.clk, 1000, units="ns").start())
+    cocotb.start_soon(Clock(dut.clk, 50, units="us").start())
     await reset_dut(dut)
 
     # Fast-fill to 255: hold spike_valid high for 255 consecutive cycles
@@ -103,7 +103,7 @@ async def test_rollover(dut):
 @cocotb.test()
 async def test_count_holds(dut):
     """count must not change when spike_valid stays low."""
-    cocotb.start_soon(Clock(dut.clk, 1000, units="ns").start())
+    cocotb.start_soon(Clock(dut.clk, 50, units="us").start())
     await reset_dut(dut)
 
     # Send 5 spikes to get a non-zero count
@@ -128,7 +128,7 @@ async def test_count_holds(dut):
 @cocotb.test()
 async def test_reset_clears(dut):
     """Reset during counting clears count to 0."""
-    cocotb.start_soon(Clock(dut.clk, 1000, units="ns").start())
+    cocotb.start_soon(Clock(dut.clk, 50, units="us").start())
     await reset_dut(dut)
 
     # Count up to 20

@@ -13,9 +13,9 @@ So after run_conversion (which ends in FSM state 0), one more edge is needed
 before checking count. This extra edge puts the FSM in state 1.
 
 To re-enter state 0 before the next run_conversion, wait_refractory() waits
-exactly 104 cycles = 14×7 + 6, which satisfies:
-  (1 + 104) % 7 == 0     → returns to state 0
-  104 > 98               → refractory counter (100) fully drained
+exactly 1504 cycles = 214×7 + 6, which satisfies:
+  (1 + 1504) % 7 == 0   → returns to state 0
+  1504 > 1500           → refractory counter (1500) fully drained
 
 Tests:
   1. ADC mode: drive a known conversion, verify data_out shows correct ADC value
@@ -34,7 +34,7 @@ from cocotb.triggers import RisingEdge, Timer
 # Helpers
 # ---------------------------------------------------------------------------
 
-REFRACTORY_CYCLES = 100   # must match refractory_ctr default parameter
+REFRACTORY_CYCLES = 1500  # must match refractory_ctr default parameter (75ms @ 20kHz)
 
 async def clk_edge(dut):
     """Await one rising edge, then let NBAs settle."""
@@ -103,14 +103,14 @@ async def await_spike_pipeline(dut):
 
 async def wait_refractory(dut):
     """
-    Wait 104 cycles (= 14×7 + 6) with comparator_in=0.
+    Wait 1504 cycles (= 214×7 + 6) with comparator_in=0.
 
-    104 satisfies two constraints:
-      (1 + 104) % 7 == 0   → returns FSM from state 1 to state 0
-      104 > 98             → refractory counter (100 − 2 already elapsed) drains to 0
+    1504 satisfies two constraints:
+      (1 + 1504) % 7 == 0   → returns FSM from state 1 to state 0
+      1504 > 1500           → refractory counter (1500 − 2 already elapsed) drains to 0
     """
     dut.comparator_in.value = 0
-    for _ in range(104):
+    for _ in range(1504):
         await clk_edge(dut)
 
 
@@ -131,7 +131,7 @@ async def align_to_state0(dut):
 @cocotb.test()
 async def test_adc_mode_output(dut):
     """ADC mode: data_out[5:0] == adc_result after conversion, upper bits = 0."""
-    cocotb.start_soon(Clock(dut.clk, 1000, units="ns").start())
+    cocotb.start_soon(Clock(dut.clk, 50, units="us").start())
     await reset_dut(dut)
 
     dut.mode_select.value = 0   # ADC mode
@@ -157,7 +157,7 @@ async def test_adc_mode_output(dut):
 @cocotb.test()
 async def test_threshold_crossing(dut):
     """Spike fires for adc_result >= threshold, not for adc_result < threshold."""
-    cocotb.start_soon(Clock(dut.clk, 1000, units="ns").start())
+    cocotb.start_soon(Clock(dut.clk, 50, units="us").start())
     await reset_dut(dut)
 
     dut.threshold.value   = 32
@@ -207,7 +207,7 @@ async def test_threshold_crossing(dut):
 @cocotb.test()
 async def test_spike_count_increments(dut):
     """Three above-threshold conversions increment spike count by 1 each."""
-    cocotb.start_soon(Clock(dut.clk, 1000, units="ns").start())
+    cocotb.start_soon(Clock(dut.clk, 50, units="us").start())
     await reset_dut(dut)
 
     dut.threshold.value   = 10   # low threshold — easy to cross
@@ -233,7 +233,7 @@ async def test_spike_count_increments(dut):
 @cocotb.test()
 async def test_refractory_blocks(dut):
     """Two above-threshold conversions back-to-back: only first increments count."""
-    cocotb.start_soon(Clock(dut.clk, 1000, units="ns").start())
+    cocotb.start_soon(Clock(dut.clk, 50, units="us").start())
     await reset_dut(dut)
 
     dut.threshold.value   = 10
@@ -268,7 +268,7 @@ async def test_refractory_blocks(dut):
 @cocotb.test()
 async def test_mode_switch(dut):
     """Toggling mode_select switches data_out between ADC value and spike count."""
-    cocotb.start_soon(Clock(dut.clk, 1000, units="ns").start())
+    cocotb.start_soon(Clock(dut.clk, 50, units="us").start())
     await reset_dut(dut)
 
     dut.threshold.value   = 10

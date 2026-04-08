@@ -13,7 +13,7 @@
 `default_nettype none
 
 module refractory_ctr #(
-    parameter REFRACTORY_CYCLES = 100
+    parameter REFRACTORY_CYCLES = 1500
 ) (
     input  wire clk,
     input  wire rst_n,
@@ -21,20 +21,20 @@ module refractory_ctr #(
     output reg  spike_valid  // gated spike: high for exactly 1 cycle per accepted spike
 );
 
-    reg [7:0] counter;  // counts down from REFRACTORY_CYCLES to 0
+    reg [10:0] counter;  // counts down from REFRACTORY_CYCLES to 0 (11-bit: max 2047)
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            counter     <= 8'd0;
+            counter     <= 11'd0;
             spike_valid <= 1'b0;
         end else begin
             spike_valid <= 1'b0;  // default: deassert every cycle
 
             if (counter > 0) begin
-                counter <= counter - 8'd1;
+                counter <= counter - 11'd1;
             end else if (spike_in) begin
                 spike_valid <= 1'b1;
-                counter     <= REFRACTORY_CYCLES[7:0];
+                counter     <= REFRACTORY_CYCLES[10:0];
             end
         end
     end

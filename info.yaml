@@ -1,11 +1,11 @@
 # Tiny Tapeout project information
 project:
-  title:        "neuralADC"      # Project title
+  title:        "emgADC"      # Project title
   author:       "Sidhant Moola"      # Your name
   discord:      "coolgamr"      # Your discord username, for communication and automatically assigning you a Tapeout role (optional)
-  description:  "mixed-signal front end with Amplifier, 6-bit SAR ADC, spike detector comparator and counter"      # One line description of what your project does
+  description:  "mixed-signal EMG front end with 30Hz HPF, 500Hz LPF, 6-bit SAR ADC, MUAP detector and counter"      # One line description of what your project does
   language:     "Analog" # other examples include Verilog, Amaranth, VHDL, etc
-  clock_hz:     1000000       # Clock frequency in Hz (or 0 if not applicable)
+  clock_hz:     20000       # Clock frequency in Hz (or 0 if not applicable)
 
   # How many tiles your design occupies? A single tile is about 167x108 uM.
   tiles: "1x2"          # Valid values for analog projects: 1x2, 2x2
@@ -31,8 +31,8 @@ project:
 # This section is for the datasheet/website. Use descriptive names (e.g., RX, TX, MOSI, SCL, SEG_A, etc.).
 pinout:
   # Inputs
-  ui[0]: "HPF enable (300 Hz high-pass filter on/off)"
-  ui[1]: "LPF enable (5 kHz low-pass filter on/off)"
+  ui[0]: "HPF enable (30 Hz high-pass filter on/off)"
+  ui[1]: "LPF enable (500 Hz low-pass filter on/off)"
   ui[2]: "Spike threshold bit 0 (LSB)"
   ui[3]: "Spike threshold bit 1"
   ui[4]: "Spike threshold bit 2"
@@ -61,7 +61,7 @@ pinout:
   uio[7]: ""
 
   # Analog pins
-  ua[0]: "Analog neural signal input"
+  ua[0]: "Analog EMG signal input (pre-amplified)"
   ua[1]: "Reference voltage (Vref)"
   ua[2]: ""
   ua[3]: ""

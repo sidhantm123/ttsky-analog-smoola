@@ -1,4 +1,4 @@
-# Neural ADC — Design Notes
+# EMG ADC — Design Notes
 ## Project: tt_um_sidhantm123_neural_adc
 **Repo:** https://github.com/sidhantm123/ttsky-analog-smoola  
 **Platform:** Tiny Tapeout SKY130A shuttle  
@@ -17,7 +17,7 @@
 
 ## What This Chip Does
 
-A single-channel neural spike detection front end. It accepts a pre-amplified analog neural signal, passes it through switchable filters, digitizes it with a 6-bit SAR ADC, detects threshold crossings (spikes), enforces a refractory period to prevent double-counting, and outputs either the raw digital sample or a running 8-bit spike count — selectable at runtime.
+A single-channel surface EMG (electromyography) front end. It accepts a pre-amplified analog EMG signal from patch electrodes via an external PCB, passes it through switchable filters, digitizes it with a 6-bit SAR ADC, detects motor unit action potential (MUAP) threshold crossings, enforces a refractory period to prevent double-counting, and outputs either the raw digital sample or a running 8-bit MUAP count — selectable at runtime.
 
 ---
 
@@ -26,7 +26,7 @@ A single-channel neural spike detection front end. It accepts a pre-amplified an
 The design is split into two halves with fundamentally different workflows:
 
 ```
-ua[0] ──→ [ HPF 300Hz ]──→ [ LPF 5kHz ]──→ [ Cap DAC (64 unit caps) ]
+ua[0] ──→ [ HPF 30Hz ]──→ [ LPF 500Hz ]──→ [ Cap DAC (64 unit caps) ]
 ua[1] ──→ Vref                                       ↓
 ui_in[0] → HPF on/off                        [ Comparator ]
 ui_in[1] → LPF on/off                               ↓
@@ -48,8 +48,8 @@ ui_in[1] → LPF on/off                               ↓
 ### Analog Front End
 Hand-laid-out in Magic VLSI using Xschem schematics and ngspice simulation. NOT synthesized from Verilog.
 
-- **High-pass filter (300 Hz):** Blocks DC electrode offset and low-frequency drift. Implemented as an RC filter. Bypassable via `ui_in[0]`. Cutoff frequency fixed in silicon.
-- **Low-pass filter (5 kHz):** Anti-aliasing filter, rejects high-frequency noise above the neural spike band. Bypassable via `ui_in[1]`. Cutoff frequency fixed in silicon.
+- **High-pass filter (30 Hz):** Blocks DC electrode offset and low-frequency motion artefacts. SENIAM-compliant lower cutoff for surface EMG. RC time constant ≈ 5.3 ms. Bypassable via `ui_in[0]`. Pseudo-resistor PMOS topology. Cutoff frequency fixed in silicon.
+- **Low-pass filter (500 Hz):** Anti-aliasing filter; EMG signal energy is concentrated below 500 Hz per SENIAM guidelines. RC time constant ≈ 318 µs. Bypassable via `ui_in[1]`. Cutoff frequency fixed in silicon.
 - **Comparator:** Simple differential comparator. Sits at the heart of the SAR ADC, comparing the input voltage against the capacitor DAC output on each conversion cycle. ~20–30 transistors.
 - **6-bit Capacitor DAC:** Binary-weighted array of 64 unit capacitors (~25 µm² each, ~5×5 µm). Switch transistors connect each cap to either Vref or GND under control of the SAR FSM. Total cap array area ~3,200 µm² including routing and spacing overhead.
 
@@ -58,7 +58,7 @@ Written in Verilog, synthesized via OpenLane/LibreLane, standard Tiny Tapeout HD
 
 - **SAR Control FSM:** Sequences 6 conversion cycles. On each cycle: sets a DAC bit high, reads comparator output, keeps or clears the bit (successive approximation). Assembles the final 6-bit result after all cycles complete.
 - **Threshold Detector:** Compares 6-bit ADC output to the 6-bit threshold loaded from `ui_in[7:2]`. Asserts spike signal when `adc_out >= threshold`.
-- **Refractory Counter:** Enforces a minimum dead-time after each detected spike to prevent the same spike being counted multiple times (neural spikes have a natural refractory period of ~1–2 ms). Implemented as a down-counter that blocks new spike detections while nonzero.
+- **Refractory Counter:** Enforces a 75 ms dead-time after each detected MUAP. Motor unit inter-discharge intervals range from 20–200 ms; 75 ms corresponds to a firing rate of ~13 Hz typical of moderate voluntary contraction (Farina et al. 2014). Implemented as an 11-bit down-counter (1500 cycles at 20 kHz) that blocks new detections while nonzero.
 - **Spike Counter:** 8-bit counter, increments on each validated spike event (i.e., threshold crossed AND refractory period expired).
 - **Output Mux:** Selects between raw 6-bit ADC value (zero-padded to 8 bits on `uo_out[7:0]`) and 8-bit spike count, controlled by `uio[0]`.
 
@@ -69,22 +69,22 @@ Written in Verilog, synthesized via OpenLane/LibreLane, standard Tiny Tapeout HD
 ### Analog Pins
 | Pin | Function |
 |-----|----------|
-| `ua[0]` | Analog neural signal input (pre-amplified, expected range ~100mV–1V) |
+| `ua[0]` | Analog EMG signal input (pre-amplified by external PCB, expected range ~100mV–1V) |
 | `ua[1]` | External reference voltage (Vref) for the capacitor DAC |
 | `ua[2]`–`ua[5]` | Not connected (not paid for) |
 
 ### Digital Inputs
 | Pin | Function |
 |-----|----------|
-| `ui_in[0]` | High-pass filter enable (1 = 300 Hz HPF active, 0 = bypassed) |
-| `ui_in[1]` | Low-pass filter enable (1 = 5 kHz LPF active, 0 = bypassed) |
+| `ui_in[0]` | High-pass filter enable (1 = 30 Hz HPF active, 0 = bypassed) |
+| `ui_in[1]` | Low-pass filter enable (1 = 500 Hz LPF active, 0 = bypassed) |
 | `ui_in[2]` | Spike threshold bit 0 (LSB) |
 | `ui_in[3]` | Spike threshold bit 1 |
 | `ui_in[4]` | Spike threshold bit 2 |
 | `ui_in[5]` | Spike threshold bit 3 |
 | `ui_in[6]` | Spike threshold bit 4 |
 | `ui_in[7]` | Spike threshold bit 5 (MSB) |
-| `clk` | System clock (1 MHz default, up to 66 MHz max) |
+| `clk` | System clock (20 kHz, 50 µs period — gives 2857 SPS, 4× Nyquist above 500 Hz LPF) |
 | `rst_n` | Active-low reset |
 
 ### Digital Outputs
@@ -114,7 +114,7 @@ Written in Verilog, synthesized via OpenLane/LibreLane, standard Tiny Tapeout HD
 - Filter cutoff frequency is set by RC component values baked into silicon — cannot be changed post-fabrication without switchable component banks.
 - Switchable resistor/capacitor banks would consume most of the remaining `ui_in` pins, forcing removal of the programmable threshold.
 - Programmable threshold is more valuable for the application than tunable filter frequencies.
-- 300 Hz HPF and 5 kHz LPF are standard values for neural spike recording and cover the vast majority of use cases.
+- 30 Hz HPF and 500 Hz LPF follow SENIAM guidelines for surface EMG and cover the vast majority of use cases (Merletti et al. 2004, De Luca et al. 2010).
 
 ### Why no on-chip amplifier?
 - A low-noise amplifier (LNA) is the most impactful upgrade but also the hardest analog block to design and the most sensitive to process variation.
@@ -128,9 +128,10 @@ Written in Verilog, synthesized via OpenLane/LibreLane, standard Tiny Tapeout HD
 - Keeping to 1.8V simplifies the flow considerably.
 
 ### Clock frequency
-- 1 MHz default. SAR ADC performs 6 conversion cycles per sample → ~166 kSPS.
-- Neural spikes are 1–10 kHz bandwidth, so 20–200 kSPS is more than sufficient.
-- Clock can be adjusted at runtime via the demo board RP2040 up to 66 MHz max.
+- 20 kHz (50 µs period). SAR ADC performs 6 conversion cycles per sample → ~2857 SPS.
+- EMG signal bandwidth is DC–500 Hz per SENIAM; 2857 SPS is 4× above Nyquist (satisfied).
+- 20 kHz also gives refractory period of exactly 1500 cycles = 75 ms (clean round number).
+- CLOCK_PERIOD in config.json = 50000 ns.
 
 ---
 
@@ -213,7 +214,7 @@ ttsky-analog-smoola/
 - `tiles`: `1x2` ✓
 - `analog_pins`: `2` ✓
 - `uses_3v3`: `false` ✓
-- `clock_hz`: `1000000` ✓
+- `clock_hz`: `20000` ✓
 - `pinout`: filled in ✓
 - `src/project.v` module name updated to match `top_module` ✓
 

@@ -214,13 +214,18 @@ FINAL WORKING devcontainer.json:
   "remoteEnv": {
     "PDK": "sky130A",
     "PDK_ROOT": "/foss/pdks",
-    "PATH": "/foss/tools/magic/bin:/foss/tools/xschem/bin:/foss/tools/ngspice/bin:/foss/tools/netgen/bin:/foss/tools/klayout/bin:/foss/tools/iverilog/bin:/foss/tools/gtkwave/bin:/foss/tools/yosys/bin:/foss/tools/verilator/bin:/foss/tools/sak/bin:${containerEnv:PATH}"
+    "PATH": "/foss/tools/klayout:/foss/tools/openroad/bin:/foss/tools/magic/bin:/foss/tools/xschem/bin:/foss/tools/ngspice/bin:/foss/tools/netgen/bin:/foss/tools/iverilog/bin:/foss/tools/gtkwave/bin:/foss/tools/yosys/bin:/foss/tools/verilator/bin:/foss/tools/sak/bin:${containerEnv:PATH}"
   },
   "mounts": [
     "source=${localWorkspaceFolder},target=/foss/designs,type=bind"
   ],
   "workspaceFolder": "/foss/designs"
 }
+
+NOTE: klayout does NOT have a /bin subdirectory in this image — the binary
+is directly in /foss/tools/klayout/. openroad requires its own separate
+/foss/tools/openroad/bin entry. Using /foss/tools/klayout/bin will cause
+"which klayout" to return empty.
 
 After rebuilding (Cmd+Shift+P → Dev Containers: Rebuild Container),
 all tools were found immediately in fresh terminals:

@@ -126,7 +126,7 @@ async def run_conversion(dut, target, label=""):
 @cocotb.test()
 async def test_conversion_42(dut):
     """Convert 42 (0b101010) — mid-range alternating bits."""
-    cocotb.start_soon(Clock(dut.clk, 1000, units="ns").start())  # 1 MHz
+    cocotb.start_soon(Clock(dut.clk, 50, units="us").start())  # 20 kHz
     await reset_dut(dut)
     await run_conversion(dut, 42, label="target=42")
 
@@ -134,7 +134,7 @@ async def test_conversion_42(dut):
 @cocotb.test()
 async def test_conversion_0(dut):
     """Convert 0 (0b000000) — minimum value, all comparator responses 0."""
-    cocotb.start_soon(Clock(dut.clk, 1000, units="ns").start())  # 1 MHz
+    cocotb.start_soon(Clock(dut.clk, 50, units="us").start())  # 20 kHz
     await reset_dut(dut)
     await run_conversion(dut, 0, label="target=0")
 
@@ -142,7 +142,7 @@ async def test_conversion_0(dut):
 @cocotb.test()
 async def test_conversion_63(dut):
     """Convert 63 (0b111111) — maximum value, all comparator responses 1."""
-    cocotb.start_soon(Clock(dut.clk, 1000, units="ns").start())  # 1 MHz
+    cocotb.start_soon(Clock(dut.clk, 50, units="us").start())  # 20 kHz
     await reset_dut(dut)
     await run_conversion(dut, 63, label="target=63")
 
@@ -154,7 +154,7 @@ async def test_conversion_63(dut):
 @cocotb.test()
 async def test_conv_done_pulse_width(dut):
     """conv_done must be high for exactly 1 clock cycle, no more."""
-    cocotb.start_soon(Clock(dut.clk, 1000, units="ns").start())  # 1 MHz
+    cocotb.start_soon(Clock(dut.clk, 50, units="us").start())  # 20 kHz
     await reset_dut(dut)
 
     seq, _ = get_comparator_seq(27)
@@ -187,7 +187,7 @@ async def test_conv_done_pulse_width(dut):
 @cocotb.test()
 async def test_auto_restart(dut):
     """After conv_done, the FSM restarts and produces a correct second conversion."""
-    cocotb.start_soon(Clock(dut.clk, 1000, units="ns").start())  # 1 MHz
+    cocotb.start_soon(Clock(dut.clk, 50, units="us").start())  # 20 kHz
     await reset_dut(dut)
 
     # First conversion: target = 17
@@ -217,7 +217,7 @@ async def test_dac_bits_sequence(dut):
       edge 4 (state 4→5): 101011 (43)   — keep bit1, try bit0
       edge 5 (state 5→6): 100000 (32)   — done; reset MSB for restart
     """
-    cocotb.start_soon(Clock(dut.clk, 1000, units="ns").start())  # 1 MHz
+    cocotb.start_soon(Clock(dut.clk, 50, units="us").start())  # 20 kHz
     await reset_dut(dut)
 
     target = 42
