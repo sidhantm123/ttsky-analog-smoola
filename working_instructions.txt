@@ -495,12 +495,23 @@ PURPOSE: Convert your Verilog to a physical GDS layout (place and route).
          This is done for the digital blocks only.
          The analog blocks are laid out manually in Magic.
 
-SETUP (only needed if container is rebuilt):
+SETUP (only needed after a fresh clone or if .venv/tt/ are missing):
   cd ~/Desktop/TinyTapeout/ttsky-analog-smoola
   git clone https://github.com/TinyTapeout/tt-support-tools tt
+  /usr/local/opt/python@3.12/bin/python3.12 -m venv .venv --upgrade-deps
+  source .venv/bin/activate
+  pip install -r tt/requirements.txt
+  pip install cocotb==1.8.1 librelane==2.4.2
+
+IMPORTANT: After running --create-user-config, you MUST reapply these two fixes
+to src/user_config.json before hardening (--create-user-config overwrites the
+file and does not know about analog projects):
+  "FP_SIZING": "absolute"
+  "FP_DEF_TEMPLATE": "dir::../tt/tech/sky130A/def/analog/tt_analog_1x2.def"
 
 GENERATE CONFIG:
   ./tt/tt_tool.py --create-user-config
+  (then reapply fixes above to src/user_config.json)
 
 HARDEN:
   ./tt/tt_tool.py --harden
@@ -519,12 +530,21 @@ Pay attention to:
 VIEW IN OPENROAD GUI:
   ./tt/tt_tool.py --open-in-openroad
 
-VIEW IN KLAYOUT:
-  ./tt/tt_tool.py --open-in-klayout
+VIEW GDS IN KLAYOUT (via Docker + XQuartz):
+  1. Open XQuartz on Mac (Spotlight → XQuartz → Enter, wait for it to load)
+  2. In a Mac terminal (NOT the container terminal), run:
+       xhost + 127.0.0.1
+  3. Open VS Code → Reopen in Container
+  4. In the container terminal (Ctrl+`), run:
+       klayout /foss/designs/runs/wokwi/final/gds/tt_um_sidhantm123_neural_adc.gds &
+
+  Alternatively, open the GDS directly on Mac if KLayout is installed natively:
+    brew install --cask klayout   (one time)
+    open runs/wokwi/final/gds/tt_um_sidhantm123_neural_adc.gds
 
 WHERE OUTPUT FILES GO:
-  runs/wokwi/results/final/gds/        — final GDS
-  runs/wokwi/results/final/verilog/gl/ — gate level netlist for GL testing
+  runs/wokwi/final/gds/        — final GDS
+  runs/wokwi/final/nl/         — gate level netlist (.nl.v) for GL testing
 
 
 ================================================================================
@@ -772,6 +792,16 @@ SOLUTION: FP_SIZING defaults to "relative", so LibreLane auto-computes a small
             "FP_SIZING": "absolute"
           This forces the floorplan to use DIE_AREA = "0 0 161.00 225.76"
           exactly, matching the analog template pin coordinates.
+
+PROBLEM: make GATES=yes fails — "Couldn't find root handle sar_fsm"
+          Error: VPI: Toplevel instances: sar_fsm != digital_top
+SOLUTION: GATES=yes runs the gate-level netlist whose top module is
+          tt_um_sidhantm123_neural_adc, not sar_fsm (the default BLOCK).
+          The Makefile has no GATES=yes handling — it needs a dedicated GL
+          testbench written against the TT wrapper ports (ui_in, uo_out, etc.).
+          The GL netlist is at: runs/wokwi/final/nl/tt_um_sidhantm123_neural_adc.nl.v
+          GL testing is not yet implemented. Use make BLOCK=digital_top for
+          RTL-level integration tests in the meantime.
 
 PROBLEM: GitHub Actions GDS build fails
 SOLUTION: Check the Actions log for specific errors.
