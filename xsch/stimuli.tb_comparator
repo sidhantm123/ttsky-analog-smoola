@@ -1,0 +1,89 @@
+; ============================================================
+; Comparator Stimulus File
+; Monte Carlo: TT and Mismatch conditions
+; VIN = 0.9V fixed (reference)
+; VIP = 0.8V to 1.0V, +10mV every 50us (21 steps)
+; VDD = varies via agauss in SPICE
+; VBIAS = varies via agauss in SPICE
+; VSS = 0V (ground)
+; ============================================================
+
+unit u
+slope 0.1
+voltage VDD
+format hspice_simple
+
+; ---- Parameters ----
+param vref 0.900
+param vip_start 0.800
+param vstep 0.010
+param hold 50
+
+; ---- Output File ----
+beginfile stimuli_comparator.cir
+
+; ---- Initial conditions ----
+; VDD and VBIAS are set in SPICE via agauss, not here
+; VSS is ground (0V)
+set vdd 1
+set vss 0
+set vbias 1
+
+; ---- VIN fixed at 0.9V throughout ----
+set vin vref
+
+; ---- VIP starts at 0.8V ----
+set vip 0.800
+
+; ---- Hold initial value for one period ----
+s hold
+
+; ---- Step VIP from 0.8V to 1.0V in 10mV steps ----
+; Each step holds for 50us
+; 21 steps total: 0.800, 0.810, 0.820 ... 1.000
+
+set vip 0.810
+s hold
+set vip 0.820
+s hold
+set vip 0.830
+s hold
+set vip 0.840
+s hold
+set vip 0.850
+s hold
+set vip 0.860
+s hold
+set vip 0.870
+s hold
+set vip 0.880
+s hold
+set vip 0.890
+s hold
+set vip 0.900
+s hold
+set vip 0.910
+s hold
+set vip 0.920
+s hold
+set vip 0.930
+s hold
+set vip 0.940
+s hold
+set vip 0.950
+s hold
+set vip 0.960
+s hold
+set vip 0.970
+s hold
+set vip 0.980
+s hold
+set vip 0.990
+s hold
+set vip 1.000
+s hold
+
+endfile
+
+
+
