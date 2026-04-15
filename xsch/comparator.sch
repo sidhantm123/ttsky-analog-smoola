@@ -180,7 +180,7 @@ spiceprefix=X
 }
 C {lab_pin.sym} 560 -940 0 0 {name=p7 sig_type=std_logic lab=VDD}
 C {res.sym} 560 -870 0 0 {name=R1
-value=50k
+value=1k
 footprint=1206
 device=resistor
 m=1}

@@ -26,7 +26,7 @@ beginfile stimuli_comparator.cir
 ; ---- Initial conditions ----
 ; VDD and VBIAS are set in SPICE via agauss, not here
 ; VSS is ground (0V)
-set vdd 1
+;set vdd 1
 set vss 0
 ;set vbias 1
 
