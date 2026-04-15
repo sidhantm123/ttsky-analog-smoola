@@ -10,7 +10,8 @@
 
 unit u
 slope 0.1
-voltage VDD
+;voltage VDD
+voltage 1.8
 format hspice_simple
 
 ; ---- Parameters ----
@@ -27,7 +28,7 @@ beginfile stimuli_comparator.cir
 ; VSS is ground (0V)
 set vdd 1
 set vss 0
-set vbias 1
+;set vbias 1
 
 ; ---- VIN fixed at 0.9V throughout ----
 set vin vref
